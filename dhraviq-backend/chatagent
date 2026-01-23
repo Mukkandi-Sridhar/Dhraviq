@@ -1,0 +1,254 @@
+import os
+import json
+import logging
+import traceback
+import hashlib
+import time
+from typing import List, Optional
+
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from pydantic import BaseModel
+from openai import OpenAI
+import firebase_admin
+from firebase_admin import credentials, firestore
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+from dotenv import load_dotenv
+
+# ---------------- LOGGING ----------------
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(name)s - %(message)s"
+)
+logger = logging.getLogger("DhraviqBackend")
+
+# ---------------- ENV ----------------
+load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
+
+# ---------------- APP ----------------
+app = FastAPI(title="Dhraviq AI Backend")
+
+# ---------------- RATE LIMIT ----------------
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# ---------------- SECURITY ----------------
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # tighten in prod
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.add_middleware(
+    TrustedHostMiddleware,
+    allowed_hosts=["*"]
+)
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    return response
+
+# ---------------- OPENAI ----------------
+client = OpenAI(
+    api_key=os.environ.get("OPENAI_API_KEY"),
+    timeout=30.0,
+    max_retries=2
+)
+
+# ---------------- FIREBASE ----------------
+db = None
+try:
+    cred = None
+    if os.path.exists("serviceAccountKey.json"):
+        cred = credentials.Certificate("serviceAccountKey.json")
+    elif os.environ.get("FIREBASE_CREDENTIALS"):
+        cred = credentials.Certificate(json.loads(os.environ["FIREBASE_CREDENTIALS"]))
+
+    if cred:
+        firebase_admin.initialize_app(cred)
+        db = firestore.client()
+        logger.info("Firebase initialized")
+    else:
+        logger.warning("Firebase disabled (no credentials)")
+except Exception as e:
+    logger.error(f"Firebase init failed: {e}")
+
+# ---------------- MODELS ----------------
+class Message(BaseModel):
+    role: str
+    content: str
+
+class ChatRequest(BaseModel):
+    messages: List[Message]
+    email: str
+    name: Optional[str] = None
+    uid: Optional[str] = None
+
+# ---------------- MEMORY ----------------
+SESSION_MEMORY: dict[str, list[dict]] = {}
+
+# ---------------- CACHE ----------------
+RESPONSE_CACHE = {}
+CACHE_TTL = 3600
+
+def get_cache_key(text: str) -> str:
+    return hashlib.md5(text.lower().strip().encode()).hexdigest()
+
+def get_cached_response(key: str):
+    item = RESPONSE_CACHE.get(key)
+    if item and time.time() < item["expires"]:
+        return item["response"]
+    RESPONSE_CACHE.pop(key, None)
+    return None
+
+def set_cached_response(key: str, response: str):
+    RESPONSE_CACHE[key] = {
+        "response": response,
+        "expires": time.time() + CACHE_TTL
+    }
+
+# ---------------- TOOLS ----------------
+tools = [
+    {
+        "type": "function",
+        "function": {
+            "name": "save_ticket",
+            "description": "Save a user support request for follow-up",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "instagram_id": {"type": "string"},
+                    "issue_description": {"type": "string"}
+                },
+                "required": ["instagram_id", "issue_description"]
+            }
+        }
+    }
+]
+
+# ---------------- SYSTEM PROMPT ----------------
+SYSTEM_PROMPT = """
+You are the official AI assistant for **Dhraviq**, an AI-powered career and goal achievement platform.
+
+Dhraviq helps users gain:
+- Career clarity
+- Skill roadmaps
+- Realistic timelines
+- Accountability and progress tracking
+
+You assist with:
+- Understanding AI agents (GoalClarifier, SkillMap, TimelineWizard, ProgressCoach, MindsetMentor)
+- Career and learning guidance questions
+- Platform usage and navigation
+- Account, access, or backend issues
+
+RULES:
+
+1. Greet the user by name naturally.
+2. Keep responses short, clear, and professional.
+3. Do NOT mention internal systems, models, or tools.
+4. If the user reports an issue or asks for human follow-up:
+
+   STEP 1: Ask for Instagram ID.
+   STEP 2: Ask for issue details.
+   STEP 3: Save ticket and reply ONLY:
+   "We’ve received your request. Our team will contact you shortly."
+
+Tone:
+- Calm
+- Supportive
+- Career-focused
+- No marketing fluff
+"""
+
+# ---------------- DB HELPER ----------------
+def save_ticket_to_db(data: dict, uid: Optional[str]):
+    if not db:
+        return False
+    data["createdAt"] = firestore.SERVER_TIMESTAMP
+    data["status"] = "open"
+    if uid:
+        db.collection("users").document(uid).collection("tickets").add(data)
+    else:
+        db.collection("tickets").add(data)
+    return True
+
+# ---------------- ROUTE ----------------
+@app.post("/chat")
+@limiter.limit("20/minute")
+def chat(request: Request, chat_request: ChatRequest):
+    try:
+        email = chat_request.email
+        name = chat_request.name or "there"
+
+        SESSION_MEMORY.setdefault(email, [])
+        history = SESSION_MEMORY[email][-20:]
+
+        latest_user_msg = next(
+            (m.content for m in reversed(chat_request.messages) if m.role == "user"),
+            None
+        )
+
+        if latest_user_msg and not history:
+            key = get_cache_key(latest_user_msg)
+            cached = get_cached_response(key)
+            if cached:
+                return {"response": cached}
+
+        conversation = [
+            {"role": "system", "content": SYSTEM_PROMPT.replace("<name>", name)}
+        ] + history
+
+        for m in chat_request.messages:
+            conversation.append(m.dict())
+
+        res = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=conversation,
+            tools=tools,
+            tool_choice="auto"
+        )
+
+        msg = res.choices[0].message
+
+        if msg.tool_calls:
+            args = json.loads(msg.tool_calls[0].function.arguments)
+            save_ticket_to_db({
+                "email": email,
+                "instagram": args["instagram_id"],
+                "message": args["issue_description"]
+            }, chat_request.uid)
+            return {"response": "We’ve received your request. Our team will contact you shortly."}
+
+        reply = msg.content
+        SESSION_MEMORY[email].append({"role": "assistant", "content": reply})
+
+        if latest_user_msg and not history:
+            set_cached_response(get_cache_key(latest_user_msg), reply)
+
+        return {"response": reply}
+
+    except Exception as e:
+        logger.error(e)
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail="Server error")
+
+# ---------------- HEALTH ----------------
+@app.get("/")
+def root():
+    return {"status": "Dhraviq backend running"}
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
