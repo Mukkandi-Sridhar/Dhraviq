@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+pydantic
+python-dotenv
+firebase-admin
+sendgrid
+openai
+requests
+
+
