@@ -6,5 +6,4 @@ firebase-admin
 sendgrid
 openai
 requests
-
-
+slowapi

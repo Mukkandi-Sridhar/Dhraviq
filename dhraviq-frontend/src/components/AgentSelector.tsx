@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Check, Sparkles, Search } from 'lucide-react';
 import { useAppContext } from '../contexts/AppContext';
@@ -73,6 +73,17 @@ const AgentSelector: React.FC<AgentSelectorProps> = ({ isOpen, onClose }) => {
   const { selectedAgents, setSelectedAgents } = useAppContext();
   const [searchQuery, setSearchQuery] = useState('');
 
+  // Auto-close when max agents are selected
+  useEffect(() => {
+    if (selectedAgents.length === MAX_AGENTS) {
+      // Give users 5 seconds to review their selection before auto-closing
+      const timer = setTimeout(() => {
+        onClose();
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [selectedAgents.length, onClose]);
+
   const filteredAgents = agents.filter(agent =>
     agent.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     agent.specialty.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -138,6 +149,7 @@ const AgentSelector: React.FC<AgentSelectorProps> = ({ isOpen, onClose }) => {
               animate={{ y: 0 }}
               exit={{ y: '100%' }}
               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+              onClick={(e) => e.stopPropagation()}
               className="fixed bottom-0 left-0 right-0 glass rounded-t-3xl p-6 z-50 max-h-[85vh] overflow-y-auto safe-bottom"
             >
               <div className="flex items-center justify-between mb-6">
@@ -156,28 +168,28 @@ const AgentSelector: React.FC<AgentSelectorProps> = ({ isOpen, onClose }) => {
                   <X className="w-6 h-6 text-slate-500" />
                 </motion.button>
               </div>
-              
-              <motion.div 
+
+              <motion.div
                 variants={containerVariants}
                 initial="hidden"
                 animate="visible"
                 className="space-y-4 mb-6"
               >
-              {filteredAgents.map((agent) => {
-                const isSelected = selectedAgents.includes(agent.id);
-                const isDisabled = !isSelected && selectedAgents.length >= MAX_AGENTS;
+                {filteredAgents.map((agent) => {
+                  const isSelected = selectedAgents.includes(agent.id);
+                  const isDisabled = !isSelected && selectedAgents.length >= MAX_AGENTS;
 
-                return (
-                  <motion.div key={agent.id} variants={itemVariants}>
-                    <AgentCard
-                      agent={agent}
-                      isSelected={isSelected}
-                      isDisabled={isDisabled}  // Pass this prop here!
-                      onToggle={toggleAgent}
-                    />
-                  </motion.div>
-                );
-              })}
+                  return (
+                    <motion.div key={agent.id} variants={itemVariants}>
+                      <AgentCard
+                        agent={agent}
+                        isSelected={isSelected}
+                        isDisabled={isDisabled}  // Pass this prop here!
+                        onToggle={toggleAgent}
+                      />
+                    </motion.div>
+                  );
+                })}
 
 
               </motion.div>
@@ -203,6 +215,7 @@ const AgentSelector: React.FC<AgentSelectorProps> = ({ isOpen, onClose }) => {
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
             transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+            onClick={(e) => e.stopPropagation()}
             className="hidden lg:block fixed right-0 top-0 h-full w-96 glass border-l border-white/20 z-50 overflow-hidden"
           >
             <div className="flex flex-col h-full">
@@ -222,23 +235,29 @@ const AgentSelector: React.FC<AgentSelectorProps> = ({ isOpen, onClose }) => {
                   <X className="w-6 h-6 text-slate-500" />
                 </motion.button>
               </div>
-              
+
               <div className="flex-1 overflow-y-auto p-6">
-                <motion.div 
+                <motion.div
                   variants={containerVariants}
                   initial="hidden"
                   animate="visible"
                   className="space-y-4"
                 >
-                  {filteredAgents.map((agent) => (
-                    <motion.div key={agent.id} variants={itemVariants}>
-                      <AgentCard
-                        agent={agent}
-                        isSelected={selectedAgents.includes(agent.id)}
-                        onToggle={toggleAgent}
-                      />
-                    </motion.div>
-                  ))}
+                  {filteredAgents.map((agent) => {
+                    const isSelected = selectedAgents.includes(agent.id);
+                    const isDisabled = !isSelected && selectedAgents.length >= MAX_AGENTS;
+
+                    return (
+                      <motion.div key={agent.id} variants={itemVariants}>
+                        <AgentCard
+                          agent={agent}
+                          isSelected={isSelected}
+                          isDisabled={isDisabled}
+                          onToggle={toggleAgent}
+                        />
+                      </motion.div>
+                    );
+                  })}
                 </motion.div>
               </div>
 
@@ -267,20 +286,28 @@ const AgentSelector: React.FC<AgentSelectorProps> = ({ isOpen, onClose }) => {
 interface AgentCardProps {
   agent: Agent;
   isSelected: boolean;
+  isDisabled?: boolean;
   onToggle: (agentId: string) => void;
 }
 
-const AgentCard: React.FC<AgentCardProps> = ({ agent, isSelected, onToggle }) => {
+const AgentCard: React.FC<AgentCardProps> = ({ agent, isSelected, isDisabled, onToggle }) => {
+  const handleClick = (e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent click from bubbling to backdrop
+    if (isDisabled) return; // Don't allow selection if disabled
+    onToggle(agent.id);
+  };
+
   return (
     <motion.div
-      whileHover={{ scale: 1.02, y: -2 }}
-      whileTap={{ scale: 0.98 }}
-      onClick={() => onToggle(agent.id)}
-      className={`relative p-6 rounded-2xl border-2 cursor-pointer transition-all duration-300 hover:shadow-lg group ${
-        isSelected
-          ? 'border-indigo-300 bg-gradient-to-br from-indigo-50 to-purple-50 shadow-lg ring-2 ring-indigo-500/20'
-          : 'border-slate-200 bg-white hover:border-slate-300 hover:shadow-md'
-      }`}
+      whileHover={{ scale: isDisabled ? 1 : 1.02, y: isDisabled ? 0 : -2 }}
+      whileTap={{ scale: isDisabled ? 1 : 0.98 }}
+      onClick={handleClick}
+      className={`relative p-6 rounded-2xl border-2 transition-all duration-300 group ${isDisabled
+        ? 'border-slate-200 bg-slate-50 opacity-50 cursor-not-allowed'
+        : isSelected
+          ? 'border-indigo-300 bg-gradient-to-br from-indigo-50 to-purple-50 shadow-lg ring-2 ring-indigo-500/20 cursor-pointer hover:shadow-lg'
+          : 'border-slate-200 bg-white hover:border-slate-300 hover:shadow-md cursor-pointer'
+        }`}
     >
       <div className="flex items-start justify-between">
         <div className="flex-1">
@@ -298,13 +325,12 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, isSelected, onToggle }) =>
           </div>
           <p className="text-sm text-slate-600 leading-relaxed">{agent.description}</p>
         </div>
-        
-        <motion.div 
-          className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ml-4 transition-all duration-300 ${
-            isSelected
-              ? 'border-indigo-500 bg-indigo-500 shadow-lg'
-              : 'border-slate-300 group-hover:border-indigo-300'
-          }`}
+
+        <motion.div
+          className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ml-4 transition-all duration-300 ${isSelected
+            ? 'border-indigo-500 bg-indigo-500 shadow-lg'
+            : 'border-slate-300 group-hover:border-indigo-300'
+            }`}
           whileHover={{ scale: 1.1 }}
           whileTap={{ scale: 0.9 }}
         >
@@ -322,7 +348,7 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, isSelected, onToggle }) =>
           </AnimatePresence>
         </motion.div>
       </div>
-      
+
       {/* Selection glow effect */}
       {isSelected && (
         <motion.div
