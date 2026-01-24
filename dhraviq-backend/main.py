@@ -15,7 +15,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
-load_dotenv()
+load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
 # Logging
 logging.basicConfig(
@@ -81,7 +81,7 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # CORS
-ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "https://dhraviq.com,https://www.dhraviq.com,http://localhost:5173").split(",")
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "https://dhraviq.com,https://www.dhraviq.com,https://dhraviq.vercel.app,http://localhost:5173").split(",")
 
 app.add_middleware(
     CORSMiddleware,
