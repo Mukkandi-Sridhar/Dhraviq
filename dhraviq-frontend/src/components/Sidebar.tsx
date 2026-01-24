@@ -1,14 +1,14 @@
 import React from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  X, 
-  Home, 
-  LayoutDashboard, 
-  BookOpen, 
-  Mail, 
-  Settings, 
-  User, 
+import {
+  X,
+  Home,
+  LayoutDashboard,
+  BookOpen,
+  Mail,
+  Settings,
+  User,
   LogOut,
   Brain,
   ChevronRight,
@@ -85,7 +85,7 @@ const Sidebar: React.FC = () => {
             className="fixed inset-0 bg-black/20 backdrop-blur-sm z-40 lg:hidden"
             onClick={() => setSidebarOpen(false)}
           />
-          
+
           {/* Sidebar */}
           <motion.div
             variants={sidebarVariants}
@@ -95,7 +95,7 @@ const Sidebar: React.FC = () => {
             className="fixed left-0 top-0 h-full w-80 glass border-r border-white/20 z-50 flex flex-col overflow-hidden"
           >
             {/* Header */}
-            <motion.div 
+            <motion.div
               variants={itemVariants}
               className="flex items-center justify-between p-6 border-b border-slate-200/50"
             >
@@ -115,7 +115,7 @@ const Sidebar: React.FC = () => {
 
             {/* User Info */}
             {user && (
-              <motion.div 
+              <motion.div
                 variants={itemVariants}
                 className="px-6 py-4 bg-gradient-to-r from-slate-50 to-blue-50 border-b border-slate-200/50"
               >
@@ -134,7 +134,7 @@ const Sidebar: React.FC = () => {
                   </div>
                 </div>
                 {gmailEnabled && (
-                  <motion.div 
+                  <motion.div
                     initial={{ scale: 0.8, opacity: 0 }}
                     animate={{ scale: 1, opacity: 1 }}
                     transition={{ delay: 0.3 }}
@@ -152,28 +152,27 @@ const Sidebar: React.FC = () => {
               {menuItems.map((item, index) => {
                 const Icon = item.icon;
                 const isActive = location.pathname === item.path;
-                
+
                 return (
                   <motion.div key={item.path} variants={itemVariants}>
                     <Link
                       to={item.path}
                       onClick={() => {
-                        if (window.innerWidth < 1024) {
+                        // Auto-close sidebar after 5 seconds on all devices
+                        setTimeout(() => {
                           setSidebarOpen(false);
-                        }
+                        }, 5000);
                       }}
-                      className={`group flex items-center justify-between px-4 py-3.5 rounded-2xl transition-all duration-300 hover-lift tap-scale ${
-                        isActive
+                      className={`group flex items-center justify-between px-4 py-3.5 rounded-2xl transition-all duration-300 hover-lift tap-scale ${isActive
                           ? 'bg-gradient-to-r from-indigo-50 to-purple-50 text-indigo-700 shadow-lg border border-indigo-200/50'
                           : 'text-slate-700 hover:bg-white hover:shadow-md'
-                      }`}
+                        }`}
                     >
                       <div className="flex items-center space-x-3">
-                        <div className={`w-10 h-10 rounded-2xl flex items-center justify-center transition-all duration-300 ${
-                          isActive 
-                            ? `bg-gradient-to-br ${item.gradient} shadow-lg` 
+                        <div className={`w-10 h-10 rounded-2xl flex items-center justify-center transition-all duration-300 ${isActive
+                            ? `bg-gradient-to-br ${item.gradient} shadow-lg`
                             : 'bg-slate-100 group-hover:bg-gradient-to-br group-hover:from-slate-200 group-hover:to-slate-300'
-                        }`}>
+                          }`}>
                           <Icon className={`w-5 h-5 ${isActive ? 'text-white' : 'text-slate-600 group-hover:text-slate-700'}`} />
                         </div>
                         <span className="font-medium">{item.label}</span>
@@ -195,7 +194,7 @@ const Sidebar: React.FC = () => {
 
             {/* Logout */}
             {user && (
-              <motion.div 
+              <motion.div
                 variants={itemVariants}
                 className="p-4 border-t border-slate-200/50"
               >

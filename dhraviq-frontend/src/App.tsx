@@ -4,7 +4,8 @@ import { AppProvider } from './contexts/AppContext';
 import { AuthProvider } from './contexts/AuthProvider';
 
 import Layout from './components/Layout';
-import RequireAuth from './components/RequireAuth'; // ✅ Add this
+import RequireAuth from './components/RequireAuth';
+import ChatWidget from './components/ChatWidget';
 
 import Home from './pages/Home';
 import Auth from './pages/Auth';
@@ -47,6 +48,7 @@ function App() {
               <Route path="/contact" element={<Contact />} />
             </Routes>
           </Layout>
+          <ChatWidget />
         </Router>
       </AuthProvider>
     </AppProvider>

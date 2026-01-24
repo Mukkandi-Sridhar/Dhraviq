@@ -37,7 +37,8 @@ const Chat: React.FC = () => {
   const {
     selectedAgents,
     gmailEnabled,
-    setSelectedAgents
+    setSelectedAgents,
+    setSidebarOpen
   } = useAppContext();
 
   const [messages, setMessages] = useState<Message[]>([]);
@@ -148,7 +149,7 @@ const Chat: React.FC = () => {
       timestamp: new Date(),
       isError
     };
-    
+
     setMessages(prev => [...prev, newMessage]);
   };
 
@@ -186,10 +187,15 @@ const Chat: React.FC = () => {
     setInputValue('');
     setIsLoading(true);
 
+    // Auto-close sidebar on first message for better screen space
+    if (messages.length === 0) {
+      setSidebarOpen(false);
+    }
+
     try {
       const token = await auth.currentUser?.getIdToken();
       const backendAgents = selectedAgents.map(agent => agentIdMap[agent] || agent);
-      
+
       const payload = {
         userId: user?.uid,
         question: inputValue.trim(),
@@ -200,7 +206,7 @@ const Chat: React.FC = () => {
 
       const response = await fetch(`${BASE_URL}/run_agents`, {
         method: "POST",
-        headers: { 
+        headers: {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${token || ''}`
         },
@@ -277,7 +283,7 @@ const Chat: React.FC = () => {
   return (
     <div className="flex flex-col h-screen bg-gradient-to-br from-gray-50 to-blue-50 overflow-hidden">
       {/* Responsive Header */}
-      <header 
+      <header
         ref={headerRef}
         className="bg-white shadow-sm border-b border-gray-200 px-4 py-3 flex items-center justify-between gap-3 w-full"
       >
@@ -293,7 +299,7 @@ const Chat: React.FC = () => {
         {/* Responsive Agents Display */}
         <div className="flex-1 min-w-0 mx-2">
           {selectedAgents.length > 0 ? (
-            <div 
+            <div
               ref={agentsContainerRef}
               className={`flex items-center ${windowWidth >= 768 ? 'space-x-2' : 'space-x-1'} overflow-x-auto scrollbar-hide`}
             >
@@ -363,7 +369,7 @@ const Chat: React.FC = () => {
               >
                 <Zap className={`${windowWidth >= 768 ? 'w-12 h-12' : 'w-10 h-10'} text-white`} />
               </motion.div>
-              
+
               <motion.h3
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -372,18 +378,18 @@ const Chat: React.FC = () => {
               >
                 {user ? "Start Your Goal Journey" : "Welcome to AI Chat"}
               </motion.h3>
-              
+
               <motion.p
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.5, delay: 0.2 }}
                 className={`text-gray-600 ${windowWidth >= 768 ? 'text-lg' : 'text-base'} max-w-md mb-6`}
               >
-                {user 
+                {user
                   ? "Select AI agents and ask about career goals, skills, or technical challenges."
                   : "Sign in to chat with our specialized AI agents."}
               </motion.p>
-              
+
               <motion.button
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -400,7 +406,7 @@ const Chat: React.FC = () => {
           ) : (
             <div className={`${windowWidth >= 768 ? 'max-w-4xl' : 'max-w-3xl'} mx-auto space-y-6`}>
               {messages
-                .filter((message, index, self) => 
+                .filter((message, index, self) =>
                   index === self.findIndex(m => m.id === message.id)
                 )
                 .map((message) => (
@@ -517,7 +523,7 @@ const Chat: React.FC = () => {
       {/* Agent Selector Modal */}
       <AnimatePresence>
         {showAgentSelector && (
-          <AgentSelector 
+          <AgentSelector
             isOpen={showAgentSelector}
             onClose={() => setShowAgentSelector(false)}
             onSelect={(agents) => setSelectedAgents(agents)}
@@ -528,7 +534,7 @@ const Chat: React.FC = () => {
       {/* Gmail Prompt Modal */}
       <AnimatePresence>
         {showGmailPrompt && (
-          <GmailPrompt 
+          <GmailPrompt
             isOpen={showGmailPrompt}
             onClose={() => setShowGmailPrompt(false)}
             onEnable={() => console.log('Gmail integration enabled')}
