@@ -81,7 +81,11 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # CORS
-ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "https://dhraviq.com,https://www.dhraviq.com,https://dhraviq.vercel.app,http://localhost:5173").split(",")
+ALLOWED_ORIGINS = os.getenv(
+    "ALLOWED_ORIGINS",
+    "https://dhraviq.com,https://www.dhraviq.com,https://dhraviq.vercel.app,https://dhraviq-eight.vercel.app,http://localhost:5173"
+).split(",")
+
 
 app.add_middleware(
     CORSMiddleware,
