@@ -26,7 +26,7 @@ client = genai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 # Pushover
 PUSHOVER_TOKEN = os.getenv("PUSHOVER_TOKEN")
-PUSHOVER_USER = os.getenv("PUSHOVER_USER")
+PUSHOVER_USER  = os.getenv("PUSHOVER_USER")
 
 # Agent Roles
 AGENT_SPECIALIZATIONS = {
@@ -64,6 +64,7 @@ class AgentRequest(BaseModel):
     email: Optional[str] = None
     send_email: Optional[bool] = False
 
+
 def send_pushover_notification(user_id, question, email=None):
     try:
         msg = f"New question from {user_id}:\n\n{question}"
@@ -73,21 +74,23 @@ def send_pushover_notification(user_id, question, email=None):
             "https://api.pushover.net/1/messages.json",
             data={
                 "token": PUSHOVER_TOKEN,
-                "user": PUSHOVER_USER,
+                "user":  PUSHOVER_USER,
                 "message": msg,
-                "title": "New User Question",
+                "title":   "New User Question",
                 "priority": 0,
-                "sound": "magic",
-                "html": 1
+                "sound":   "magic",
+                "html":    1
             },
             timeout=10
         )
     except Exception as e:
         print(f"Pushover failed: {e}")
 
+
 async def send_pushover_notification_async(user_id, question, email=None):
     await asyncio.sleep(1)
     send_pushover_notification(user_id, question, email)
+
 
 TECH_TERMS_SET = {
     'python', 'javascript', 'react', 'node', 'django', 'flask',
@@ -98,6 +101,7 @@ TECH_TERMS_SET = {
 def extract_tech_keywords(text: str) -> List[str]:
     text_lower = text.lower()
     return [term for term in TECH_TERMS_SET if term in text_lower]
+
 
 async def process_agent_response(agent: str, question: str) -> Dict:
     try:
@@ -113,11 +117,13 @@ async def process_agent_response(agent: str, question: str) -> Dict:
             f"Focus: {spec['focus']}\n"
             f"Technical Role: {spec['technical']}\n\n"
             "Instructions:\n"
-            "- Respond only in your role.\n"
-            "- Use markdown (bold, lists, etc).\n"
-            "- Stay focused and professional.\n"
-            "- Intro for greetings, guidance for questions.\n"
-            "- Ensure your response is concise and only 2 lines long."
+            "- Respond only within your specific role and expertise.\n"
+            "- Use rich markdown formatting: bold headers, numbered lists, bullet points, and code blocks where relevant.\n"
+            "- Give thorough, detailed, and actionable responses.\n"
+            "- Include specific steps, examples, timelines, or resources wherever helpful.\n"
+            "- Stay professional, structured, and career-focused.\n"
+            "- For greetings, give a warm introduction explaining your role.\n"
+            "- For questions, provide a complete and comprehensive answer.\n"
         )
 
         response = await asyncio.wait_for(
@@ -126,49 +132,51 @@ async def process_agent_response(agent: str, question: str) -> Dict:
                 model="gpt-4o-mini",
                 messages=[
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": question.strip()}
+                    {"role": "user",   "content": question.strip()}
                 ],
-                temperature=0.3,
-                max_tokens=150
+                temperature=0.4,
+                max_tokens=1000,
             ),
-            timeout=15
+            timeout=30
         )
 
         duration = time.time() - start_time
         print(f"[{agent}] OpenAI response time: {duration:.2f}s")
 
         return {
-            "agent": agent,
-            "response": response.choices[0].message.content or "⚠️ No response.",
+            "agent":       agent,
+            "response":    response.choices[0].message.content or "⚠️ No response.",
             "isTechnical": True
         }
 
     except Exception as e:
         print(f"[{agent}] Error: {e}")
         return {
-            "agent": agent,
-            "response": f"⚠️ {agent} is currently unavailable.",
+            "agent":       agent,
+            "response":    f"⚠️ {agent} is currently unavailable.",
             "isTechnical": False
         }
 
+
 async def run_agentic_logic(req: AgentRequest) -> Dict:
     try:
-        if len(req.agents) > 2:
-            req.agents = req.agents[:2]  # Automatically select any two (first two) if more are provided
+        # Allow up to 5 agents at once
+        if len(req.agents) > 5:
+            req.agents = req.agents[:5]
 
-        tasks = [process_agent_response(agent, req.question) for agent in req.agents]
+        tasks   = [process_agent_response(agent, req.question) for agent in req.agents]
         results = await asyncio.gather(*tasks)
         responses = {r["agent"]: str(r["response"]) for r in results}
 
         if db:
             try:
                 db.collection("sessions").document().set({
-                    "userId": req.userId,
-                    "question": req.question,
-                    "agents": req.agents,
-                    "responses": responses,
-                    "createdAt": firestore.SERVER_TIMESTAMP,
-                    "isTechnical": any(r["isTechnical"] for r in results),
+                    "userId":            req.userId,
+                    "question":          req.question,
+                    "agents":            req.agents,
+                    "responses":         responses,
+                    "createdAt":         firestore.SERVER_TIMESTAMP,
+                    "isTechnical":       any(r["isTechnical"] for r in results),
                     "technicalKeywords": extract_tech_keywords(req.question)
                 })
             except Exception as log_err:
@@ -177,15 +185,17 @@ async def run_agentic_logic(req: AgentRequest) -> Dict:
         if req.send_email:
             if db:
                 db.collection("users").document(req.userId).set({
-                    "reminderEnabled": True,
-                    "reminderQuestion": req.question.strip(),
-                    "lastUpdated": firestore.SERVER_TIMESTAMP,
-                    "email": req.email if req.email else None
+                    "reminderEnabled":   True,
+                    "reminderQuestion":  req.question.strip(),
+                    "lastUpdated":       firestore.SERVER_TIMESTAMP,
+                    "email":             req.email if req.email else None
                 }, merge=True)
-            asyncio.create_task(send_pushover_notification_async(req.userId, req.question, req.email))
+            asyncio.create_task(
+                send_pushover_notification_async(req.userId, req.question, req.email)
+            )
 
         return {
-            "status": "success",
+            "status":    "success",
             "sessionId": datetime.utcnow().isoformat(),
             "responses": responses
         }
